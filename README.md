@@ -21,13 +21,12 @@ conda env create -f environment.yml
 ```
 
 ### Download Datasets
-#### EgoPER 
-Please visit [EgoPER](https://github.com/robert80203/EgoPER_official) to download the dataset.
+To download the original EgoPER dataset, please visit [EgoPER](https://github.com/robert80203/EgoPER_official)
 
-#### CaptainCook4D
-Pleae visit [CaptainCook4D](https://captaincook4d.github.io/captain-cook/) to download the original dataset or send us a request to download the pre-extracted features, annotations, and training/test splits.
+To download the original CaptainCook4D dataset, please visit [CaptainCook4D](https://captaincook4d.github.io/captain-cook/)
 
-**To download datsets and pre-trained weight (both EgoPER and CaptainCook4D)**, please send a request to lee.shih@northeastern.edu with the following information:
+
+**To download the processed datsets (including annotations, pre-extracted features, training/test splits) and pre-trained weights of GTG2Vid for both EgoPER and CaptainCook4D**, please send a request to lee.shih@northeastern.edu with the following information:
 
 - Your Full Name
 - Institution/Organization
