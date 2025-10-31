@@ -5,10 +5,19 @@
 - [Inference](#Inference)
 
 
-This is the official implementation of [Error Recognition in Procedural Videos using Generalized Task Graph](#)
+This is the official implementation of [Error Recognition in Procedural Videos using Generalized Task Graph](https://openaccess.thecvf.com/content/ICCV2025/papers/Lee_Error_Recognition_in_Procedural_Videos_using_Generalized_Task_Graph_ICCV_2025_paper.pdf)
 
 Please cite our ICCV 2025 paper if our paper/implementation is helpful for your research:
-
+```
+@InProceedings{Lee_2025_ICCV,
+    author    = {Lee, Shih-Po and Elhamifar, Ehsan},
+    title     = {Error Recognition in Procedural Videos using Generalized Task Graph},
+    booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+    month     = {October},
+    year      = {2025},
+    pages     = {10009-10021}
+}
+```
 
 ## Preparation
 
