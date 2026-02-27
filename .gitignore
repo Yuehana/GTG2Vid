@@ -1,0 +1,13 @@
+
+# ===== ignore heavy artifacts =====
+ckpts/
+data/
+runs/
+__pycache__/
+*.pth
+*.pt
+*.ckpt
+*.log
+
+# python cache
+*/__pycache__/
