@@ -25,9 +25,10 @@ def get_data_dict(v_feature_dir, label_dir, video_list, action2idx, actiontype2i
     print(f'Loading Dataset ...')
     
     for video in tqdm(video_list):
-        v_feature_file = os.path.join(v_feature_dir, '{}.npy'.format(video+suffix))
+        v_feature_file = os.path.join(v_feature_dir, '{}_480.npy'.format(video+suffix))
         
-        event_file = os.path.join(label_dir, '{}.txt'.format(video))
+        event_file = os.path.join(label_dir, f"A_{video}_labels.txt")
+
 
         with open(os.path.join(event_file), 'r') as fp:
             event = fp.readlines()
@@ -59,6 +60,18 @@ def get_data_dict(v_feature_dir, label_dir, video_list, action2idx, actiontype2i
         
 
         v_feature = np.load(v_feature_file)
+        v_feature = np.load(v_feature_file)
+
+        v_T = v_feature.shape[0]
+        l_T = label_seq.shape[0]
+
+        if v_T != l_T:
+           #print(f"[WARN] {video}: feature frames = {v_T}, label frames = {l_T}. Truncating...")
+            T = min(v_T, l_T)
+            v_feature = v_feature[:T]
+            label_seq = label_seq[:T]
+            type_label_seq = type_label_seq[:T]
+
         assert(v_feature.shape[0] == label_seq.shape[0])
 
         data_dict[video]['v_feature'] = torch.from_numpy(v_feature).float()

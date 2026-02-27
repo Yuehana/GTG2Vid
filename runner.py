@@ -93,6 +93,8 @@ def get_datasets(all_params, num_classes, action2idx, actiontype2idx, is_eval):
         suffix = "_360p"
     elif naming == "EgoPER": 
         addition_name = "Error_Addition"
+    elif naming == "IndEgo": 
+        addition_name = "Error_Addition"
 
     v_feature_dir = os.path.join(root_data_dir, dataset_name, all_params["v_feat_path"])
     label_dir = os.path.join(root_data_dir, dataset_name, all_params['label_path'])
@@ -192,6 +194,8 @@ class Runner:
             self.addition_idx = self.actiontype2idx["Error_Addition"]
         elif self.naming == "CaptainCook4D":
             self.addition_idx = self.actiontype2idx["Preparation Error"]
+        elif self.naming == "IndEgo":
+            self.addition_idx = self.actiontype2idx["Error_Addition"]                        # TO DO: check I just copy pasted from EgoPER
         self.num_types = len(self.actiontype2idx) - 1
         # self.num_types = self.actiontype2idx[self.addition_name] #len(self.actiontype2idx) - 1 # process addition prototypes independently
 
@@ -231,49 +235,78 @@ class Runner:
 
         ############################################
         # generate error/normal description features
-        with open(os.path.join(root_data_dir, all_params['dataset_name'], all_params['simple_error_filename']+".txt"), "r") as fp:
-            self.error_list = fp.readlines()
+        if self.naming in ["EgoPER", "CaptainCook4D", "IndEgo"]:
+            with open(os.path.join(root_data_dir, all_params['dataset_name'], all_params['simple_error_filename']+".txt"), "r") as fp:
+                self.error_list = fp.readlines()
 
-        with open(os.path.join(root_data_dir, all_params['dataset_name'], "normal_actions.txt"), "r") as fp:
-            self.normal_action_list = fp.readlines()
-        
-
-        self.action_error_dict = {}
-        for error in self.error_list:
-            name, des = error.split(" ")
-            _, action, _, action_type, err_idx = name.split("_")
-            action = int(action)
-            action_type = int(action_type)
-
-            feature = np.load(os.path.join(root_data_dir, all_params['dataset_name'], all_params['simple_error_path'], name+".npy"))
-            feature = torch.from_numpy(feature).float()
-
-            if action not in self.action_error_dict:
-                self.action_error_dict[action] = {}
+            with open(os.path.join(root_data_dir, all_params['dataset_name'], "normal_actions.txt"), "r") as fp:
+                self.normal_action_list = fp.readlines()
             
-            if action_type not in self.action_error_dict[action]:
-                self.action_error_dict[action][action_type] = []
 
-            self.action_error_dict[action][action_type].append(feature)
+            self.action_error_dict = {}
+            for error in self.error_list:
+                name, des = error.split(" ")
+                _, action, _, action_type, err_idx = name.split("_")
+                action = int(action)
+                action_type = int(action_type)
 
-        # average all the error feature
-        self.merge_action_error_dict = {}
-        for k, v in self.action_error_dict.items():
-            self.merge_action_error_dict[k] = {}
-            for s_k, s_v in self.action_error_dict[k].items():
-                self.merge_action_error_dict[k][s_k] = torch.stack(s_v).mean(0)
+                feature = np.load(os.path.join(root_data_dir, all_params['dataset_name'], all_params['simple_error_path'], name+".npy"))
+                feature = torch.from_numpy(feature).float()
 
-        
-        self.normal_action_dict = {}
-        for normal_action in self.normal_action_list:
-            name, des = normal_action.split(" ")
-            _, action = name.split("_")
+                if action not in self.action_error_dict:
+                    self.action_error_dict[action] = {}
+                
+                if action_type not in self.action_error_dict[action]:
+                    self.action_error_dict[action][action_type] = []
 
-            feature = np.load(os.path.join(root_data_dir, all_params['dataset_name'], "vc_normal_action_features", name+".npy"))
-            feature = torch.from_numpy(feature).float()
+                self.action_error_dict[action][action_type].append(feature)
 
-            if action not in self.normal_action_dict:
-                self.normal_action_dict[int(action)] = feature
+            # average all the error feature
+            self.merge_action_error_dict = {}
+            for k, v in self.action_error_dict.items():
+                self.merge_action_error_dict[k] = {}
+                for s_k, s_v in self.action_error_dict[k].items():
+                    self.merge_action_error_dict[k][s_k] = torch.stack(s_v).mean(0)
+
+            
+            self.normal_action_dict = {}
+            for normal_action in self.normal_action_list:
+                line = normal_action.strip()
+                if not line:
+                    continue
+                # 只切一刀，避免描述里有空格导致 split 出错
+                name, des = line.split(" ", 1)
+
+                _, action = name.split("_")
+
+                feature = np.load(
+                    os.path.join(root_data_dir, all_params['dataset_name'],
+                                "vc_normal_action_features", name + ".npy")
+                )
+                feature = torch.from_numpy(feature).float()
+
+                if int(action) not in self.normal_action_dict:
+                    self.normal_action_dict[int(action)] = feature
+
+            # ====== IMPORTANT: create projection layers AFTER the loop ======
+            TARGET_DIM = 768  # 你的 error prototype dim，从报错看是 768
+
+            # video feature: input_dim(比如1024) -> 768
+            self.video_proj = nn.Linear(input_dim, TARGET_DIM, bias=False).to(self.device)
+
+            # normal action feature: (比如2048) -> 768
+            any_key = next(iter(self.normal_action_dict.keys()))
+            normal_dim = self.normal_action_dict[any_key].shape[0]  # 很可能是 2048
+            self.normal_proj = nn.Linear(normal_dim, TARGET_DIM, bias=False).to(self.device)
+            # ===============================================================
+
+        else:
+            print(f"[INFO] Skip error/normal description features for dataset {self.dataset_name}.")
+            self.error_list = []
+            self.normal_action_list = []
+            self.action_error_dict = {}
+            self.merge_action_error_dict = {}
+            self.normal_action_dict = {}
         ############################################
 
         ################################################
@@ -284,6 +317,8 @@ class Runner:
         elif self.naming == "CaptainCook4D":
             # self.ignore_actions = [0, 6] # normal and other
             self.ignore_actions = ["Normal", "Other"]
+        elif self.naming == "IndEgo":
+            self.ignore_actions = []    ##############################TO DO: check I just copy pasted from EgoPER
 
         exist_type = []
         for video_idx, data in enumerate(self.test_loader):
@@ -326,6 +361,12 @@ class Runner:
         if not ignore_bg or (ignore_bg and pre_label != self.bg_idx):
             steps.append(pre_label)
             timestamps.append([st, ed])
+
+        if len(steps) == 0:
+            return (
+                torch.tensor([self.bg_idx], device=labels.device),
+                torch.tensor([[0, len(labels)]], dtype=torch.float32, device=labels.device),
+            )
 
         return torch.cat(steps, 0).long(), torch.tensor(timestamps).float()
 
@@ -405,6 +446,10 @@ class Runner:
                 per_out_log.append("Ignore action: ")
                 for exclude_action in self.ignore_actions:
                     per_out_log.append(exclude_action+", ")
+            if len(f1_list) == 0:
+                mean_f1 = 0.0
+            else:
+                mean_f1 = np.array(f1_list).mean()
             per_out_log.append("\n")
             per_out_log.append("Avg F1@%s: %.1f\n\n"%(t, np.array(f1_list).mean()))
             
@@ -416,7 +461,7 @@ class Runner:
 
             avg_f1_thresholds += np.array(f1_list).mean()
 
-            if mode == "er":
+            """ if mode == "er":
                 total_p = total_tp / float(total_tp+total_fp)
                 total_r = total_tp / float(total_tp+total_fn)
                 if np.isnan(total_p):
@@ -440,40 +485,93 @@ class Runner:
                 total_w_f1 = total_f1 * eacc
                 per_out_log.append(f"|{'All Precision':^{15}}|{'All Recall':^{15}}|{'All F1':^{15}}|{'All w-F1@%s'%t:^{15}}|{'EAcc':^{15}}|\n")
                 per_out_log.append(f"|{total_p:^{15}.1f}|{total_r:^{15}.1f}|{total_f1:^{15}.1f}|{total_w_f1:^{15}.1f}|{eacc*100:^{15}.1f}|\n\n")
-                # per_out_log.append(out_log)
+                # per_out_log.append(out_log) """
+
+            if mode == "er":
+                # avoid division by zero when there are no positives
+                denom_p = float(total_tp + total_fp)
+                denom_r = float(total_tp + total_fn)
+
+                if denom_p == 0:
+                    total_p = 0.0
+                else:
+                    total_p = total_tp / denom_p
+
+                if denom_r == 0:
+                    total_r = 0.0
+                else:
+                    total_r = total_tp / denom_r
+
+                if np.isnan(total_p):
+                    total_p = 0.0
+                if np.isnan(total_r):
+                    total_r = 0.0
+
+                if total_p + total_r == 0:
+                    total_f1 = 0.0
+                else:
+                    total_f1 = 2.0 * (total_p * total_r) / (total_p + total_r)
+                total_f1 = np.nan_to_num(total_f1)
+
+                total_p = total_p * 100
+                total_r = total_r * 100
+                total_f1 = total_f1 * 100
+
+                # avoid division by zero when all types are ignored
+                denom_types = (len(self.actiontype2idx) - len(self.ignore_actions))
+                if denom_types <= 0:
+                    eacc = 0.0
+                else:
+                    eacc = theta / denom_types
+
+                total_w_f1 = total_f1 * eacc
+                per_out_log.append(f"|{'All Precision':^{15}}|{'All Recall':^{15}}|{'All F1':^{15}}|{'All w-F1@%s'%t:^{15}}|{'EAcc':^{15}}|\n")
+                per_out_log.append(f"|{total_p:^{15}.1f}|{total_r:^{15}.1f}|{total_f1:^{15}.1f}|{total_w_f1:^{15}.1f}|{eacc*100:^{15}.1f}|\n\n")
+
 
         return per_out_log, avg_f1_thresholds / len(joint_per_metrics)
 
     def erm(self, pred, no_drop_pred, feature):
-        cosine_similarity = nn.CosineSimilarity()
+        # feature: [T, input_dim] (torch tensor)
+        feature = feature.to(self.device)
+        feature = self.video_proj(feature)  # [T,768]
 
-        type_pred = np.zeros((len(pred)))
-        type_prob = np.zeros((self.num_types + 1, len(pred)))
+        type_prob = np.zeros((self.num_types + 1, len(pred)), dtype=np.float32)
 
-        target_area = pred == -1
+        target_area = (pred == -1)
 
-        for i in range(len(target_area)):
-            # if is target frame (error)
+        for i in range(len(pred)):
             if target_area[i]:
-                target_action = no_drop_pred[i]
-                target_frame_feature = feature[i]
-                best_sim = None
-                target_type = 0
+                target_action = int(no_drop_pred[i])
 
-                # if action in no_drop_pred is background, label remain -1
                 if target_action == self.bg_idx:
                     type_prob[self.addition_idx][i] = 1.0
-                else:
-                    for k, v in self.merge_action_error_dict[target_action].items():
-                        sim = torch.sigmoid((v * self.normal_action_dict[target_action] * target_frame_feature).sum() * 200)
-                        if best_sim is None or sim > best_sim:
-                            best_sim = sim
-                            target_type = k
-                    type_prob[target_type][i] = best_sim
+                    continue
+
+                target_frame_feature = feature[i]  # [768]
+
+                # normal action feature -> 768
+                normal_feat = self.normal_proj(
+                    self.normal_action_dict[target_action].to(self.device)
+                )  # [768]
+
+                best_sim = -1e9
+                target_type = 0
+
+                for k, v in self.merge_action_error_dict[target_action].items():
+                    error_proto = v.to(self.device)  # [768]
+                    sim = torch.sigmoid((error_proto * normal_feat * target_frame_feature).sum() * 200)
+                    sim_val = float(sim.detach().cpu().item())
+
+                    if sim_val > best_sim:
+                        best_sim = sim_val
+                        target_type = int(k)
+
+                type_prob[target_type][i] = best_sim
             else:
                 type_prob[0][i] = 1.0
 
-        ## smoothing
+        # smoothing
         smoothed_output = np.zeros_like(type_prob)
         for c in range(type_prob.shape[0]):
             smoothed_output[c] = maximum_filter(type_prob[c], size=self.window_size)
@@ -484,6 +582,7 @@ class Runner:
         error_pred[error_pred > 0] = 1
 
         return pred, type_pred, error_pred
+
 
     def train(self):
         global_step = 0
@@ -499,6 +598,7 @@ class Runner:
                 video = video
                 label = label.squeeze(0).long().cpu()
                 type_label = type_label.squeeze(0).long().cpu()
+                
 
                 action_logits, frame_features = self.model(feature.permute(0, 2, 1), label)
 
@@ -541,7 +641,7 @@ class Runner:
                         self.writer.add_scalar("Loss/train", total_loss, global_step)
                     
 
-            f1_vid = self.evaluate(global_step, "video")
+            f1_vid = self.evaluate(global_step)       #f1_vid = self.evaluate(global_step, "video")
             if f1_vid >= best_score:
                 best_score = f1_vid
                 print('Save best weight at epoch: %d'%(epoch + 1))
@@ -613,7 +713,7 @@ class Runner:
                     # convert all background into the same class
                     no_drop_pred[no_drop_pred >= self.num_classes] = self.bg_idx
 
-                    pred, type_pred, error_pred = self.erm(pred, no_drop_pred, feature.permute(0, 2, 1).cpu().squeeze(0))
+                    pred, type_pred, error_pred = self.erm(pred, no_drop_pred, feature.permute(0, 2, 1).squeeze(0))
 
 
 
@@ -686,6 +786,8 @@ class Runner:
                     pred[pred == -1] = self.bg_idx
                     label[label == -1] = self.bg_idx
                     steps, _ = self.from_framewise_to_steps(label, ignore_bg=True)
+                    print(video, "unique pred:", np.unique(pred), "bg_idx:", self.bg_idx)
+
                     pred_steps, _ = self.from_framewise_to_steps(torch.tensor(pred).long(), ignore_bg=True)
                     predstep_steps.append([pred_steps, steps])
 

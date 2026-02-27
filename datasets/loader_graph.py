@@ -114,6 +114,18 @@ class GraphLoader:
                     "nodes": [1,2,3,5,6,7,8,9],
                     "edges": [[4, 1], [1, 2], [6, 3], [5, 3], [9, 3], [8, 3], [7, 4], [2, 5], [2, 6], [2, 8], [2, 9]]
                 }
+        elif naming == "IndEgo":
+            if dataset_name == "IndEgo_vc_T04":
+                self.graph_info = {
+                    "nodes": [1,2,3,4],
+                    "edges": [(1, 2), (2, 3), (3, 4)]
+                }
+            if dataset_name == "IndEgo_vc_T05":
+                self.graph_info = {
+                    "nodes": [1,2,3,4,5],
+                    "edges": [(1, 2), (2, 3), (3, 4), (4, 5)]
+                }
+
 
         self.naming = naming
         self.dataset_name = dataset_name
